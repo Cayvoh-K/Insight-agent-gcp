@@ -16,26 +16,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          install_components: 'terraform'
-
+      # ✅ Authenticate to Google Cloud using Service Account JSON
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
+      # ✅ Set up Google Cloud SDK
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      # ✅ Set up Terraform
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
 
+      # ✅ Initialize Terraform
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
+      # ✅ Plan Terraform
       - name: Terraform Plan
         run: terraform -chdir=terraform plan
 
+      # ✅ Apply Terraform
       - name: Terraform Apply
         run: terraform -chdir=terraform apply -auto-approve
 
