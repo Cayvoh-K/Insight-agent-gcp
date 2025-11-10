@@ -2,50 +2,40 @@ name: Deploy Insight Agent to Cloud Run
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    steps:
-      # 1. Checkout code
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    permissions:
+      contents: 'read'
+      id-token: 'write'
 
-      # 2. Authenticate to Google Cloud
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: 'terraform'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # 3. Set up gcloud CLI
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          install_components: "beta"
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
 
-      # 4. Configure Docker authentication for Artifact Registry
-      - name: Configure Docker for Artifact Registry
-        run: |
-          echo ${{ secrets.GCP_SA_KEY }} | docker login -u _json_key --password-stdin https://${{ secrets.GCP_REGION }}-docker.pkg.dev
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
 
-      # 5. Build Docker image
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest .
+      - name: Terraform Plan
+        run: terraform -chdir=terraform plan
 
-      # 6. Push Docker image to Artifact Registry
-      - name: Push Docker image
-        run: |
-          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest
-
-      # 7. Deploy to Cloud Run via Terraform
-      - name: Terraform Init & Apply
-        working-directory: terraform
-        run: |
-          terraform init
-          terraform apply -auto-approve -var="image_tag=latest"
+      - name: Terraform Apply
+        run: terraform -chdir=terraform apply -auto-approve
 
