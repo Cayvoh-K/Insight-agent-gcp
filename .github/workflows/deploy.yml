@@ -2,45 +2,71 @@ name: Deploy Insight Agent to Cloud Run
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
   deploy:
+    name: Build and Deploy to Cloud Run
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: 'read'
-      id-token: 'write'
-
     steps:
-      - name: Checkout repository
+      # Step 1 — Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ✅ Authenticate to Google Cloud using Service Account JSON
+      # Step 2 — Authenticate with GCP using the service account key
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # ✅ Set up Google Cloud SDK
-      - name: Set up Google Cloud SDK
+      # Step 3 — Set up gcloud CLI
+      - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: 'beta'
 
-      # ✅ Set up Terraform
-      - name: Set up Terraform
+      # Step 4 — Configure Docker to use gcloud credentials
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      # Step 5 — Build Docker image
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest .
+
+      # Step 6 — Push Docker image to Artifact Registry
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest
+
+      # Step 7 — Set up Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
 
-      # ✅ Initialize Terraform
+      # Step 8 — Initialize Terraform
       - name: Terraform Init
-        run: terraform -chdir=terraform init
+        run: |
+          terraform -chdir=terraform init
 
-      # ✅ Plan Terraform
+      # Step 9 — Terraform Plan
       - name: Terraform Plan
-        run: terraform -chdir=terraform plan
+        run: |
+          terraform -chdir=terraform plan \
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var="region=${{ secrets.GCP_REGION }}" \
+            -var="image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest"
 
-      # ✅ Apply Terraform
+      # Step 10 — Terraform Apply
       - name: Terraform Apply
-        run: terraform -chdir=terraform apply -auto-approve
+        run: |
+          terraform -chdir=terraform apply -auto-approve \
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var="region=${{ secrets.GCP_REGION }}" \
+            -var="image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest"
 
