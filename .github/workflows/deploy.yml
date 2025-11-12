@@ -53,19 +53,21 @@ jobs:
         run: terraform -chdir=${{ env.TF_DIR }} init
 
       - name: Terraform Plan
-        run: terraform -chdir=${{ env.TF_DIR }} plan \
-              -var="project_id=${{ env.PROJECT_ID }}" \
-              -var="region=${{ env.REGION }}" \
-              -var="service_name=${{ env.SERVICE_NAME }}" \
-              -var="image=${{ env.IMAGE_URI }}"
+        run: |
+          terraform -chdir=${{ env.TF_DIR }} plan \
+            -var="project_id=${{ env.PROJECT_ID }}" \
+            -var="region=${{ env.REGION }}" \
+            -var="service_name=${{ env.SERVICE_NAME }}" \
+            -var="image=${{ env.IMAGE_URI }}"
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
-        run: terraform -chdir=${{ env.TF_DIR }} apply -auto-approve \
-              -var="project_id=${{ env.PROJECT_ID }}" \
-              -var="region=${{ env.REGION }}" \
-              -var="service_name=${{ env.SERVICE_NAME }}" \
-              -var="image=${{ env.IMAGE_URI }}"
+        run: |
+          terraform -chdir=${{ env.TF_DIR }} apply -auto-approve \
+            -var="project_id=${{ env.PROJECT_ID }}" \
+            -var="region=${{ env.REGION }}" \
+            -var="service_name=${{ env.SERVICE_NAME }}" \
+            -var="image=${{ env.IMAGE_URI }}"
 
       - name: Output Cloud Run Service URL
         run: |
