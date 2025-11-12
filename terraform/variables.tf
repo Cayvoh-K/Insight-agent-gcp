@@ -17,5 +17,6 @@ variable "service_name" {
 
 variable "image" {
   description = "The full container image URL"
+  type        = string
 }
 
