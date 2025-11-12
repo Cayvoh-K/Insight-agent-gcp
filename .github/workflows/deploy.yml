@@ -1,4 +1,4 @@
-name: Deploy Insight Agent to Cloud Run
+name: Build and Deploy to GCP
 
 on:
   push:
@@ -7,66 +7,58 @@ on:
 
 jobs:
   deploy:
-    name: Build and Deploy to Cloud Run
+    name: Build and Deploy
     runs-on: ubuntu-latest
 
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: us-central1
+      IMAGE_NAME: insight-agent
+      IMAGE_TAG: ${{ github.sha }}
+      TF_DIR: terraform
+
     steps:
-      # Step 1 — Checkout repository
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 2 — Authenticate with GCP using the service account key
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      # Step 3 — Set up gcloud CLI
-      - name: Set up gcloud CLI
+      - name: Set up Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          install_components: 'beta'
+          project_id: ${{ env.PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
 
-      # Step 4 — Configure Docker to use gcloud credentials
-      - name: Configure Docker for Artifact Registry
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker gcr.io --quiet
+
+      - name: Build and Push Docker Image
         run: |
-          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+          IMAGE_URI="gcr.io/${PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "Building and pushing ${IMAGE_URI}"
+          docker build -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
 
-      # Step 5 — Build Docker image
-      - name: Build Docker Image
-        run: |
-          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest .
-
-      # Step 6 — Push Docker image to Artifact Registry
-      - name: Push Docker Image
-        run: |
-          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest
-
-      # Step 7 — Set up Terraform
-      - name: Setup Terraform
+      - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.9.8
 
-      # Step 8 — Initialize Terraform
       - name: Terraform Init
-        run: |
-          terraform -chdir=terraform init
+        run: terraform -chdir=${{ env.TF_DIR }} init
 
-      # Step 9 — Terraform Plan
       - name: Terraform Plan
-        run: |
-          terraform -chdir=terraform plan \
-            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
-            -var="region=${{ secrets.GCP_REGION }}" \
-            -var="image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest"
+        run: terraform -chdir=${{ env.TF_DIR }} plan \
+              -var="project_id=${{ env.PROJECT_ID }}" \
+              -var="region=${{ env.REGION }}" \
+              -var="service_name=insight-agent-service" \
+              -var="image=${{ env.IMAGE_URI }}"
 
-      # Step 10 — Terraform Apply
       - name: Terraform Apply
-        run: |
-          terraform -chdir=terraform apply -auto-approve \
-            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
-            -var="region=${{ secrets.GCP_REGION }}" \
-            -var="image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/insight-agent-repo/insight-agent:latest"
+        if: github.ref == 'refs/heads/main'
+        run: terraform -chdir=${{ env.TF_DIR }} apply -auto-approve \
+              -var="project_id=${{ env.PROJECT_ID }}" \
+              -var="region=${{ env.REGION }}" \
+              -var="service_name=insight-agent-service" \
+              -var="image=${{ env.IMAGE_URI }}"
 
